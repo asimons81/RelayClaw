@@ -1,0 +1,59 @@
+{
+  "name": "@relayclaw/relayclaw",
+  "version": "1.0.0",
+  "description": "Structured agent handoff and context bridge for OpenClaw crews. Schema-validated state transfer, heartbeat dead-drop recovery, human approval gate, FIFO queue, conflict resolution, schema versioning, and per-chain cost ledger.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asimon81/RelayClaw.git"
+  },
+  "homepage": "https://github.com/asimon81/RelayClaw#readme",
+  "bugs": {
+    "url": "https://github.com/asimon81/RelayClaw/issues"
+  },
+  "type": "module",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Tony Simons",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "relayclaw",
+    "agent-handoff",
+    "context-bridge"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "index.ts",
+    "src/**/*.ts",
+    "skills/**/*",
+    "supabase/migrations/**/*.sql",
+    "migrations/README.md",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md"
+  ],
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

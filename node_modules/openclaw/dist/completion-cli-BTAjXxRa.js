@@ -1,0 +1,16 @@
+import "./env-D1ktUnAV.js";
+import "./paths-CjuwkA2v.js";
+import "./safe-text-K2Nonoo3.js";
+import "./tmp-openclaw-dir-DzRxfh9a.js";
+import "./theme-BH5F9mlg.js";
+import "./version-DGzLsBG-.js";
+import "./zod-schema.agent-runtime-DNndkpI8.js";
+import "./runtime-BF_KUcJM.js";
+import "./registry-bOiEdffE.js";
+import "./ip-ByO4-_4f.js";
+import "./links-DaR1j_Bv.js";
+import { a as registerCompletionCli } from "./completion-cli-75qxmOMi.js";
+import "./register.subclis-q6gvdLPA.js";
+import "./command-registry-mqbFro7O.js";
+import "./program-context-dRKV_Mq_.js";
+export { registerCompletionCli };

@@ -1,0 +1,46 @@
+{
+  "id": "relayclaw",
+  "version": "1.0.0",
+  "kind": "plugin",
+  "name": "RelayClaw",
+  "description": "Structured agent handoff and context bridge for OpenClaw crews. Schema-validated state transfer, heartbeat dead-drop recovery, human approval gate, FIFO queue, conflict resolution, schema versioning, and per-chain cost ledger.",
+  "tags": ["handoff", "context", "multi-agent", "coordination", "workflow", "queue", "approval", "cost-tracking", "dead-drop", "relay"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "supabaseUrl": {
+        "type": "string",
+        "description": "Supabase project URL (e.g. https://<ref>.supabase.co)"
+      },
+      "supabaseServiceKey": {
+        "type": "string",
+        "description": "Supabase service_role key. Required — plugin uses service_role for all operations."
+      },
+      "heartbeatIntervalMs": {
+        "type": "number",
+        "description": "How often (ms) the heartbeat service snapshots agent state. Default: 30000"
+      },
+      "deadDropThresholdMs": {
+        "type": "number",
+        "description": "How long (ms) after the last heartbeat before the dead-drop monitor promotes the snapshot to an interrupted handoff. Default: 90000"
+      },
+      "mdExportDir": {
+        "type": "string",
+        "description": "Absolute path where .md handoff exports are written. Default: ~/.openclaw/relayclaw/handoffs/"
+      },
+      "notifyTarget": {
+        "type": "string",
+        "description": "Default Telegram chat ID for approval notifications."
+      },
+      "notifyGroupId": {
+        "type": "string",
+        "description": "Mission Control group ID for topic-routed notifications."
+      },
+      "autoApproveHighTrust": {
+        "type": "boolean",
+        "description": "Auto-approve handoffs from agents with trust_level='high'. Default: true"
+      }
+    }
+  }
+}
