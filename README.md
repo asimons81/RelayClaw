@@ -1,5 +1,7 @@
 # RelayClaw
 
+![RelayClaw banner](assets/repo-banner-relayclaw.png)
+
 **Structured agent handoff and context bridge for OpenClaw crews.**
 
 RelayClaw solves the gap between one agent finishing and another starting. Without it, context is copy-pasted, decisions are lost, costs are invisible, and interrupted sessions disappear into the void. RelayClaw gives every handoff a schema, a queue, an approval gate, and a full audit trail — so your crew operates as a coherent system, not a collection of isolated sessions.
