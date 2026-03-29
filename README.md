@@ -6,16 +6,260 @@ RelayClaw solves the gap between one agent finishing and another starting. Witho
 
 ---
 
-## Features
+## Status
 
-| Feature | What it does |
+| | |
 |---|---|
-| **Heartbeat / Dead-Drop** | Active agents emit rolling 30s state snapshots. If a session dies unexpectedly, the dead-drop monitor auto-promotes the last snapshot to an `interrupted` handoff so work is never silently lost. |
-| **Approval Gate** | Every handoff sits in `pending` until a human approves it (via Telegram, CLI, or web). High-trust agents can be auto-approved. Rejections and edits are recorded in the immutable audit log. |
-| **FIFO Queue** | Approved handoffs are enqueued per target agent using a Postgres-level FIFO (`enqueue_handoff` / `dequeue_handoff` with `FOR UPDATE SKIP LOCKED`). Agents receive work in the order it was approved. |
-| **Conflict Resolution** | When multiple handoffs target the same agent simultaneously, `merge_strategy` determines the outcome: `merge`, `replace`, or `flag_conflict` for human review. |
-| **Schema Versioning** | Handoff document schemas are stored in `schema_registry` with semver versions and migration paths. The current schema is enforced via a partial unique index. |
-| **Cost Ledger** | Every agent session records tokens in/out, USD estimate, and wall-clock time. Per-leg rows roll up to chain aggregates in `handoff_chains` for full crew cost visibility. |
+| **Version** | 1.0.0 |
+| **License** | MIT |
+| **Repository** | [asimon81/RelayClaw](https://github.com/asimon81/RelayClaw) |
+| **Supabase Schema** | v1.0.0 — 8 tables, 5 stored functions |
+
+---
+
+## What is implemented in v1.0.0
+
+Everything below is shipped and working:
+
+- **Heartbeat / Dead-Drop** — Rolling 30s state snapshots per agent session. If a session dies unexpectedly, the dead-drop monitor auto-promotes the last snapshot to an `interrupted` handoff so work is never silently lost.
+- **Approval Gate** — Every handoff sits in `pending` until a human approves it (via Telegram or CLI). High-trust agents bypass the gate automatically.
+- **FIFO Queue** — Approved handoffs are enqueued per target agent using Postgres-level `FOR UPDATE SKIP LOCKED`. Agents receive work in strict approval order.
+- **Context Injection** — Handoff documents are prepended to the target agent's system prompt via the `before_prompt_build` hook at session start.
+- **Conflict Resolution** — Three strategies: `merge`, `replace`, or `flag_conflict` (human review). Applied when multiple handoffs target the same agent simultaneously.
+- **Schema Versioning** — Handoff document schemas are stored in `schema_registry` with semver versions and migration paths.
+- **Cost Ledger** — Every agent session records tokens in/out, USD estimate, and wall-clock time. Per-leg rows roll up to chain aggregates in `handoff_chains`.
+- **CLI** — Full `openclaw relay` command suite: list, inspect, approve, reject, inject, complete, queue, heartbeat, cost, schema, chain.
+- **Markdown Export** — Each handoff is written to `mdExportDir/<uuid>.md` as a human-readable snapshot.
+
+**Not yet implemented (roadmap):**
+- Web-based approval UI (currently Telegram + CLI only)
+- RelayClaw skill for natural-language handoff management via chat
+- Automated handoff chaining without manual creation
+- Per-chain timeout and SLA alerting
+
+---
+
+## Quick Start
+
+**1. Install the plugin**
+
+```bash
+openclaw plugin add relayclaw
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/asimon81/RelayClaw
+cd RelayClaw
+npm install
+openclaw plugin link .
+```
+
+**2. Create a Supabase project**
+
+Sign up at [supabase.com](https://supabase.com) or use an existing project.
+
+**3. Run the migration**
+
+Open the Supabase SQL editor (Dashboard → SQL Editor) and run:
+
+```sql
+-- File: supabase/migrations/20260328000000_relayclaw_init.sql
+-- Copy the full contents of this file into the SQL editor and execute.
+```
+
+Or from the CLI:
+
+```bash
+npx supabase db push --file supabase/migrations/20260328000000_relayclaw_init.sql
+```
+
+The migration creates 8 tables, 5 stored functions, and seeds 12 example agent config rows.
+
+**4. Configure the plugin**
+
+```bash
+openclaw config set plugins.entries.relayclaw.config.supabaseUrl https://<your-ref>.supabase.co
+openclaw config set plugins.entries.relayclaw.config.supabaseServiceKey <your-service-role-key>
+```
+
+> **Security:** Always use the `service_role` key. The plugin bypasses RLS intentionally. Never expose this key in client-side code or public repositories.
+
+**5. Restart OpenClaw**
+
+```bash
+systemctl --user restart openclaw
+```
+
+You should see `RelayClaw v1.0.0 loaded` in the logs.
+
+---
+
+## Core Concepts
+
+### Handoff Lifecycle
+
+```
+pending → approved → queued → injected → completed
+                ↓
+           interrupted (if session dies before inject)
+```
+
+1. **pending** — Created by source agent. Waiting for human approval (unless `autoApproveHighTrust` and trust level is `high`).
+2. **approved** — Human or auto-approval granted. Ready to enqueue.
+3. **queued** — Enqueued in the target agent's FIFO queue via `enqueue_handoff()`.
+4. **injected** — Target agent's session started; `dequeue_handoff()` popped this handoff and injected the context block into the system prompt.
+5. **completed** — Target agent called `relay_handoff(action='complete')`. Cost recorded, chain aggregates updated.
+6. **interrupted** — Session died before completion. Dead-drop monitor auto-promoted the last heartbeat to a handoff.
+
+### Context Injection Format
+
+When a handoff is injected, the target agent receives a block prepended to its system prompt:
+
+```
+=== RELAYCLAW HANDOFF ===
+from: <source_agent_id> (<display_name>) | chain: <chain_id> | seq: <sequence>
+goal: <goal text>
+status: <status_summary>
+decisions:
+  - <decision>: <rationale>
+artifacts:
+  - <path> [<type>] <description>
+blockers:
+  - [<severity>] <description> → <suggested_resolution>
+next_steps:
+  1. [<priority>] <step>
+confidence: <N>%
+=== END HANDOFF ===
+```
+
+---
+
+## CLI Command Reference
+
+```bash
+# Handoff lifecycle
+openclaw relay list [--agent <id>] [--status <pending|approved|queued|injected|completed|interrupted>]
+openclaw relay inspect <handoff_id>
+openclaw relay approve <handoff_id>
+openclaw relay reject <handoff_id> [--reason <reason>]
+openclaw relay inject <handoff_id>
+openclaw relay complete <handoff_id>
+
+# Queue
+openclaw relay queue [--agent <id>]
+openclaw relay queue flush <agent_id>
+
+# Heartbeat / dead-drop
+openclaw relay heartbeat status [--agent <id>]
+openclaw relay heartbeat promote <heartbeat_id> [--target <agent_id>]
+
+# Cost
+openclaw relay cost [--chain <chain_id>] [--agent <id>]
+
+# Schema
+openclaw relay schema list
+openclaw relay schema show [<version>]
+
+# Chains
+openclaw relay chain list
+openclaw relay chain inspect <chain_id>
+```
+
+---
+
+## Configuration Reference
+
+All fields go under `plugins.entries.relayclaw.config` in your OpenClaw config.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `supabaseUrl` | `string` | **required** | Supabase project URL (`https://<ref>.supabase.co`) |
+| `supabaseServiceKey` | `string` | **required** | `service_role` key. Never use `anon`. |
+| `heartbeatIntervalMs` | `number` | `30000` | Heartbeat snapshot interval in ms. |
+| `deadDropThresholdMs` | `number` | `90000` | ms after last heartbeat before dead-drop fires. Recommended: 3x heartbeatIntervalMs. |
+| `mdExportDir` | `string` | `~/.openclaw/relayclaw/handoffs/` | Absolute path for `.md` handoff exports. |
+| `notifyTarget` | `string` | — | Default Telegram chat ID for approval notifications. |
+| `notifyGroupId` | `string` | — | Telegram group ID for topic-routed crew notifications. |
+| `autoApproveHighTrust` | `boolean` | `true` | Auto-approve handoffs from agents with `trust_level='high'`. |
+
+### Per-Agent Config (`agent_config` table)
+
+Set per-agent in the `agent_config` table. Changes take effect on the next session — no restart needed.
+
+| Column | Default | Description |
+|---|---|---|
+| `trust_level` | `'medium'` | `'high'` bypasses approval gate when `autoApproveHighTrust=true`. |
+| `default_merge_strategy` | `'flag_conflict'` | `'merge'` · `'replace'` · `'flag_conflict'` when concurrent handoffs arrive. |
+| `notify_channel` | `'telegram'` | Notification channel for approval requests. |
+| `notify_target` | `null` | Telegram chat ID override for this agent's notifications. |
+| `notify_topic_id` | `null` | Telegram `message_thread_id` for group notifications. |
+| `max_queue_depth` | `10` | Maximum pending handoffs allowed in this agent's queue. |
+| `auto_inject` | `false` | If true, automatically inject the next queued handoff at session start. |
+| `heartbeat_interval_s` | `30` | Heartbeat emission frequency in seconds. |
+| `heartbeat_dead_threshold_s` | `90` | Seconds of silence before this agent is considered dead. |
+| `min_create_interval_s` | `60` | Minimum seconds between handoff creates from this agent. |
+
+---
+
+## End-to-End Example: Geezer → Sabbath
+
+**Setup:** Geezer (research agent, `trust_level='high'`), Sabbath (writing agent, `trust_level='medium'`). `autoApproveHighTrust=true`.
+
+**Geezer finishes research and hands off:**
+
+```
+relay_handoff {
+  action: "create",
+  target_agent_id: "sabbath",
+  goal: "Draft the quarterly product update using the attached research brief",
+  status_summary: "Research complete. Key findings in artifacts. Three open questions in blockers.",
+  decisions: [
+    { decision: "Scope limited to Q1 2026", rationale: "Q4 data incomplete" },
+    { decision: "Lead with user growth story", rationale: "Most compelling metric per Tony's brief" }
+  ],
+  artifacts: [
+    { path: "~/.openclaw/workspace/research/q1_brief.md", type: "markdown", description: "Full research brief, 4200 words" }
+  ],
+  blockers: [
+    { description: "Q4 churn figure unconfirmed", severity: "low", suggested_resolution: "Omit or use placeholder" }
+  ],
+  next_steps: [
+    { step: "Write 800-word exec summary", priority: "high" },
+    { step: "Write full 3000-word body", priority: "high" },
+    { step: "Flag gaps back to Geezer", priority: "medium" }
+  ],
+  confidence: 0.9,
+  merge_strategy: "replace"
+}
+```
+
+**Auto-approval fires.** RelayClaw records `system:auto_trust` in `approval_actions`. Handoff moves to `queued`. Sabbath's queue now has one item.
+
+**Sabbath's next session starts.** The `before_prompt_build` hook fires. `dequeue_handoff('sabbath')` pops Geezer's handoff. The context block is prepended to Sabbath's system prompt:
+
+```
+=== RELAYCLAW HANDOFF ===
+from: geezer (Geezer) | chain: quarterly-update | seq: 2
+goal: Draft the quarterly product update using the attached research brief
+status: Research complete. Key findings in artifacts. Three open questions in blockers.
+decisions:
+  - Scope limited to Q1 2026 (Q4 data incomplete)
+  - Lead with user growth story (Most compelling metric per Tony's brief)
+artifacts:
+  - ~/.openclaw/workspace/research/q1_brief.md [markdown] Full research brief, 4200 words
+blockers:
+  - [low] Q4 churn figure unconfirmed → Omit or use placeholder
+next_steps:
+  1. [high] Write 800-word exec summary
+  2. [high] Write full 3000-word body
+  3. [medium] Flag gaps back to Geezer
+confidence: 90%
+=== END HANDOFF ===
+```
+
+**Sabbath completes.** Calls `relay_handoff(action='complete')`. Cost ledger records Sabbath's session (tokens, USD, wall clock). `update_chain_cost('quarterly-update')` rolls up Geezer + Sabbath costs. Chain total is visible via `openclaw relay cost --chain quarterly-update`.
 
 ---
 
@@ -57,226 +301,18 @@ RelayClaw solves the gap between one agent finishing and another starting. Witho
 
 ---
 
-## Installation
+## Security Notes
 
-**Requirements:** OpenClaw (any version) · Node.js 20+ · A Supabase project
-
-```bash
-# Install the plugin
-openclaw plugin add relayclaw
-
-# Or from source
-git clone https://github.com/relayclaw/relayclaw
-cd relayclaw
-npm install
-openclaw plugin link .
-```
+- The plugin requires the **service_role** key, not the anon key. Row Level Security is intentionally bypassed.
+- Never commit `supabaseServiceKey` to version control. Use environment variables or a secrets manager.
+- Telegram bot tokens similarly should never be committed.
+- Per-agent `notify_target` overrides allow routing notifications to different Telegram chats per agent.
 
 ---
 
-## Supabase Setup
+## Contributing
 
-1. Create a new Supabase project (or use an existing one).
-
-2. Open the Supabase SQL editor and run the full migration:
-
-```bash
-# Copy the migration file contents into the SQL editor, or use the Supabase CLI:
-supabase db push --file supabase/migrations/20260328000000_relayclaw_init.sql
-```
-
-3. Copy your project URL and `service_role` key from **Project Settings → API**.
-
-4. Configure the plugin:
-
-```bash
-openclaw config set plugins.entries.relayclaw.config.supabaseUrl https://<ref>.supabase.co
-openclaw config set plugins.entries.relayclaw.config.supabaseServiceKey <service_role_key>
-```
-
-> **Security note:** Always use the `service_role` key — not the `anon` key. The plugin bypasses RLS intentionally. Never expose `supabaseServiceKey` in client-side code or public repositories.
-
----
-
-## Configuration Reference
-
-All fields go under `plugins.entries.relayclaw.config` in your OpenClaw config.
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `supabaseUrl` | `string` | **required** | Supabase project URL (`https://<ref>.supabase.co`) |
-| `supabaseServiceKey` | `string` | **required** | `service_role` key. Never use the `anon` key. |
-| `heartbeatIntervalMs` | `number` | `30000` | How often (ms) the heartbeat service snapshots agent state. |
-| `deadDropThresholdMs` | `number` | `90000` | How long (ms) after the last heartbeat before the dead-drop monitor promotes the snapshot to an `interrupted` handoff. Recommended: 3× `heartbeatIntervalMs`. |
-| `mdExportDir` | `string` | `~/.openclaw/relayclaw/handoffs/` | Absolute path where `.md` handoff exports are written. |
-| `notifyTarget` | `string` | *(your Telegram DM ID)* | Default Telegram chat ID for approval notifications. |
-| `notifyGroupId` | `string` | *(your Mission Control group ID)* | Telegram group ID for topic-routed crew notifications. |
-| `autoApproveHighTrust` | `boolean` | `true` | Auto-approve handoffs from agents with `trust_level='high'` without requiring human confirmation. |
-
-### Per-Agent Config (`agent_config` table)
-
-Each agent row in `agent_config` controls its individual behaviour:
-
-| Column | Type | Default | Description |
-|---|---|---|---|
-| `agent_id` | `text` | — | Agent identifier (primary key). Matches the agent ID in OpenClaw. |
-| `display_name` | `text` | `null` | Human-readable name shown in notifications and the UI. |
-| `trust_level` | `text` | `'medium'` | `'high'` · `'medium'` · `'low'`. High-trust agents can bypass the approval gate when `autoApproveHighTrust` is enabled. |
-| `default_merge_strategy` | `text` | `'flag_conflict'` | `'merge'` · `'replace'` · `'flag_conflict'`. Applied when multiple handoffs target the same agent. |
-| `notify_channel` | `text` | `'telegram'` | Notification channel for approval requests. |
-| `notify_target` | `text` | `null` | Telegram chat ID override for this agent. |
-| `notify_topic_id` | `int` | `null` | Telegram `message_thread_id` for topic-routed group notifications. |
-| `max_queue_depth` | `int` | `10` | Maximum number of pending handoffs allowed in this agent's queue. |
-| `auto_inject` | `boolean` | `false` | If true, automatically inject the next queued handoff at session start without waiting for explicit `inject` action. |
-| `heartbeat_interval_s` | `int` | `30` | Heartbeat emission frequency in seconds. |
-| `heartbeat_dead_threshold_s` | `int` | `90` | Seconds of silence before this agent's heartbeat is considered dead. |
-| `min_create_interval_s` | `int` | `60` | Minimum seconds between handoff creates from this agent (rate limiting). |
-
----
-
-## CLI Command Reference
-
-```bash
-# Handoff management
-openclaw relay list [--agent <id>] [--status <status>]
-openclaw relay inspect <handoff_id>
-openclaw relay approve <handoff_id>
-openclaw relay reject <handoff_id> [--reason <reason>]
-openclaw relay inject <handoff_id>
-openclaw relay complete <handoff_id>
-
-# Queue management
-openclaw relay queue [--agent <id>]
-openclaw relay queue flush <agent_id>
-
-# Heartbeat / dead-drop
-openclaw relay heartbeat status [--agent <id>]
-openclaw relay heartbeat promote <heartbeat_id> [--target <agent_id>]
-
-# Cost
-openclaw relay cost [--chain <chain_id>] [--agent <id>]
-
-# Schema
-openclaw relay schema list
-openclaw relay schema show [<version>]
-
-# Chain management
-openclaw relay chain list
-openclaw relay chain inspect <chain_id>
-```
-
----
-
-## Full Data Flow
-
-```
-1. CREATE
-   Agent calls relay_handoff with action='create'.
-   Fields: target_agent_id, goal, status_summary, decisions[], artifacts[],
-           blockers[], next_steps[], confidence, notes, merge_strategy, chain_id.
-   Handoff row created with status='pending'.
-   Markdown export written to mdExportDir/<uuid>.md.
-   Approval notification sent via Telegram.
-
-2. APPROVE
-   Human approves via Telegram reply or `openclaw relay approve <id>`.
-   approval_actions row recorded (actor, channel, timestamp).
-   Handoff status → 'approved'.
-   (If autoApproveHighTrust=true and source agent trust_level='high', this happens automatically.)
-
-3. QUEUE
-   enqueue_handoff(target_agent_id, handoff_id) called.
-   agent_queues row inserted with next FIFO position.
-   Handoff status → 'queued'.
-
-4. INJECT
-   Target agent calls relay_handoff with action='inject' (or auto_inject fires on session start).
-   dequeue_handoff(agent_id) pops the next pending item (FOR UPDATE SKIP LOCKED).
-   context_snapshot prepended to agent's system prompt via before_prompt_build hook.
-   Handoff status → 'injected'.
-
-5. COMPLETE
-   Target agent calls relay_handoff with action='complete' at end of session.
-   cost_ledger row recorded (tokens, USD, wall clock).
-   update_chain_cost(chain_id) refreshes aggregate totals.
-   Handoff status → 'completed'.
-```
-
----
-
-## Trust Level Explanation
-
-Trust levels control the approval gate behaviour:
-
-- **`high`** — Agent is trusted to produce correct, complete handoffs. If `autoApproveHighTrust=true` (default), handoffs from high-trust agents skip human review and go directly to the queue. Approval is still logged automatically for auditability.
-- **`medium`** — Default. All handoffs require human approval before queuing.
-- **`low`** — All handoffs require human approval. Additionally, `min_create_interval_s` rate limiting is strictly enforced and flagged in notifications.
-
-Trust level is set per-agent in the `agent_config` table and can be changed at any time without a schema migration.
-
----
-
-## How It Works With Your Crew
-
-A concrete Geezer → Sabbath handoff:
-
-**Scenario:** Geezer (research agent, trust_level=`high`) has completed a research brief and needs Sabbath (writing agent, trust_level=`medium`) to draft the final document.
-
-**Step 1 — Geezer creates the handoff:**
-```
-relay_handoff {
-  action: "create",
-  target_agent_id: "sabbath",
-  goal: "Draft the quarterly product update using the attached research brief",
-  status_summary: "Research complete. Key findings in artifacts. Three open questions in blockers — proceed without them.",
-  decisions: [
-    { decision: "Scope limited to Q1 2026", rationale: "Q4 data incomplete, not worth delaying" },
-    { decision: "Lead with user growth story", rationale: "Most compelling metric per Tony's brief" }
-  ],
-  artifacts: [
-    { path: "~/.openclaw/workspace/research/q1_brief.md", type: "markdown", description: "Full research brief, 4200 words" }
-  ],
-  blockers: [
-    { description: "Q4 churn figure still unconfirmed", severity: "low", suggested_resolution: "Omit or use placeholder — Tony to fill in post-draft" }
-  ],
-  next_steps: [
-    { step: "Write 800-word exec summary", priority: "high" },
-    { step: "Write full 3000-word body", priority: "high" },
-    { step: "Flag any gaps back to Geezer via relay", priority: "medium" }
-  ],
-  confidence: 0.9,
-  merge_strategy: "replace"
-}
-```
-
-**Step 2 — Auto-approval (Geezer is `high` trust):**
-RelayClaw records `system:auto_trust` in `approval_actions` and enqueues immediately. Tony gets a Telegram notification confirming the auto-approval on topic 7 (Geezer's Mission Control thread).
-
-**Step 3 — Sabbath's next session:**
-Sabbath starts a new session. The `before_prompt_build` hook fires. RelayClaw calls `dequeue_handoff('sabbath')`, finds Geezer's handoff at position 1, and prepends the injected context block to Sabbath's system prompt:
-
-```
-=== RELAYCLAW HANDOFF ===
-from: geezer (Geezer) | chain: quarterly-update | seq: 2
-goal: Draft the quarterly product update using the attached research brief
-status: Research complete. Key findings in artifacts. Three open questions in blockers — proceed without them.
-decisions:
-  - Scope limited to Q1 2026 (Q4 data incomplete, not worth delaying)
-  - Lead with user growth story (Most compelling metric per Tony's brief)
-artifacts:
-  - ~/.openclaw/workspace/research/q1_brief.md [markdown] Full research brief, 4200 words
-blockers:
-  - [low] Q4 churn figure still unconfirmed → Omit or use placeholder — Tony to fill in post-draft
-next_steps:
-  1. [high] Write 800-word exec summary
-  2. [high] Write full 3000-word body
-  3. [medium] Flag any gaps back to Geezer via relay
-confidence: 90%
-=== END HANDOFF ===
-```
-
-**Step 4 — Sabbath completes:**
-At session end, Sabbath calls `relay_handoff` with `action='complete'`. The cost ledger records Sabbath's session (tokens, USD, wall clock). `update_chain_cost` rolls up the chain totals. The quarterly-update chain now shows Geezer's research cost + Sabbath's writing cost as a single aggregate.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Migrations require verification output in PR descriptions. Schema document changes require a corresponding `schema_registry` version bump.
 
 ---
 
