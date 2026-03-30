@@ -5,3 +5,10 @@ dist/
 .env.local
 *.log
 .DS_Store
+
+# Security / personal info
+CANONICAL.txt
+supabase/migrations/APPLIED.md
+
+# Nested git repo (not part of this project)
+RelayClaw.git/
