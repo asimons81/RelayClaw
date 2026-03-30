@@ -538,18 +538,18 @@ INSERT INTO agent_config (
   notify_channel, notify_target, notify_topic_id,
   heartbeat_interval_s, heartbeat_dead_threshold_s, min_create_interval_s
 ) VALUES
-  ('main',    'Ozzy',     'high',   'replace',       'telegram', '-1003769428990', 6,  30, 90, 60),
-  ('sharon',  'Sharon',   'high',   'flag_conflict',  'telegram', '-1003769428990', 8,  30, 90, 60),
-  ('randy',   'Randy',    'medium', 'flag_conflict',  'telegram', '-1003769428990', 10, 30, 90, 60),
-  ('geezer',  'Geezer',   'high',   'replace',        'telegram', '-1003769428990', 7,  30, 90, 60),
-  ('sabbath', 'Sabbath',  'medium', 'flag_conflict',  'telegram', '-1003769428990', 9,  30, 90, 60),
-  ('bark',    'Bark',     'medium', 'flag_conflict',  'telegram', '-1003769428990', 9,  30, 90, 60),
-  ('blizzard','Blizzard', 'medium', 'flag_conflict',  'telegram', '-1003769428990', 9,  30, 90, 60),
-  ('crowley', 'Crowley',  'medium', 'flag_conflict',  'telegram', '-1003769428990', 12, 30, 90, 60),
-  ('diary',   'Diary',    'high',   'replace',        'telegram', '-1003769428990', 11, 30, 90, 60),
-  ('ward',    'Ward',     'high',   'flag_conflict',  'telegram', '-1003769428990', 13, 30, 90, 60),
-  ('iommi',   'Iommi',    'medium', 'flag_conflict',  'telegram', '-1003769428990', 9,  30, 90, 60),
-  ('dio',     'Dio',      'low',    'flag_conflict',  'telegram', '-1003769428990', 9,  30, 90, 60);
+  ('main',    'Ozzy',     'high',   'replace',       'telegram', 'YOUR_NOTIFY_GROUP_ID', 6,  30, 90, 60),
+  ('sharon',  'Sharon',   'high',   'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 8,  30, 90, 60),
+  ('randy',   'Randy',    'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 10, 30, 90, 60),
+  ('geezer',  'Geezer',   'high',   'replace',        'telegram', 'YOUR_NOTIFY_GROUP_ID', 7,  30, 90, 60),
+  ('sabbath', 'Sabbath',  'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 9,  30, 90, 60),
+  ('bark',    'Bark',     'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 9,  30, 90, 60),
+  ('blizzard','Blizzard', 'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 9,  30, 90, 60),
+  ('crowley', 'Crowley',  'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 12, 30, 90, 60),
+  ('diary',   'Diary',    'high',   'replace',        'telegram', 'YOUR_NOTIFY_GROUP_ID', 11, 30, 90, 60),
+  ('ward',    'Ward',     'high',   'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 13, 30, 90, 60),
+  ('iommi',   'Iommi',    'medium', 'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 9,  30, 90, 60),
+  ('dio',     'Dio',      'low',    'flag_conflict',  'telegram', 'YOUR_NOTIFY_GROUP_ID', 9,  30, 90, 60);
 
 -- Initial handoff document schema (v1.0.0)
 INSERT INTO schema_registry (version, schema_json, description, is_current) VALUES (
